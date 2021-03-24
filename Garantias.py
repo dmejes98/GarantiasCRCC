@@ -29,6 +29,11 @@ precios.set_index('Nemotecnico', inplace = True)
 
 
 def garantia_CRCC (Fluct, Deltas, Grup_Comp, VMDacc, Escenario_Actual, Escenario_Alza, Escenario_Baja, precios):
+    """
+    Función que calcula las garantías exigidas por la CRCC.
+
+    Todos los parámetros son dataframes de pandas.
+    """
         
     #Busco la Fluctuación en Fluct y la llevo a precios para calcular escenarios
     temp = []
