@@ -5,85 +5,101 @@ Created on Tue Oct  6 11:52:24 2020
 @author: david.mejia
 """
 
-from Garantias import garantia_CRCC
 import pandas as pd
 from datetime import datetime
 import dateutil.relativedelta
 import plotly.express as px
 from time import time
+from Grarantias_Class import Garantia
+
 
 t0 = time()
 
-Fluct = pd.read_excel("Fluct.xlsx")
-Fluct.set_index('Especie', inplace = True)
-
-Deltas = pd.read_excel("Deltas.xlsx")
-
-Grup_Comp = pd.read_excel("VMD.xlsx").loc[:,['Especie','Grupo']]
-Grup_Comp.set_index('Especie', inplace = True)
-
-VMDacc = pd.read_excel("VMD.xlsx").loc[:,['Especie','VMD']]
-VMDacc.set_index('Especie', inplace = True)
-
-
-Escenario_Ac = pd.read_excel("OperacionesSimula.xlsx")
-Escenario_Al = pd.read_excel("OperacionesSimula.xlsx")
-Escenario_Ba = pd.read_excel("OperacionesSimula.xlsx")
-
-todas_las_fechas = list(set(Escenario_Al["FechaCum"]))
-todas_las_fechas = sorted(todas_las_fechas)
+def organiza_df(Fluct, Grup_Comp, VMDacc, operaciones_h):
     
-#Selecciono fecha mayor y fecha menor
-fecha_inicial = min(Escenario_Ac["FechaCum"])
-fecha_final = max(Escenario_Ac["FechaCum"]) 
- 
-
-Almacena_GE = []
-Almacena_LMC = []
-Almacena_date = []
-
-for i in range(0,len(todas_las_fechas)-1): #len(todas_las_fechas)-1
-
-    Escenario_Ac = pd.read_excel("OperacionesSimula.xlsx")
-    Escenario_Al = pd.read_excel("OperacionesSimula.xlsx")
-    Escenario_Ba = pd.read_excel("OperacionesSimula.xlsx")
-    
-    
-    todas_las_fechas = list(set(Escenario_Al["FechaCum"]))
+    Fluct.set_index('Especie', inplace = True)
+    Grup_Comp.set_index('Especie', inplace = True)
+    VMDacc.set_index('Especie', inplace = True)
+    todas_las_fechas = list(set(operaciones_h["FechaCum"]))
     todas_las_fechas = sorted(todas_las_fechas)
+
+    return Fluct, Grup_Comp, VMDacc, todas_las_fechas
     
-    fecha_1 = todas_las_fechas[i]
-    fecha_2 = todas_las_fechas[i+1]
+
+
+def main(Fluct, Deltas, Grup_Comp, VMDacc, operaciones_h, precios_h):
+     
+    Fluct, Grup_Comp, VMDacc, todas_las_fechas = organiza_df(Fluct, Grup_Comp, VMDacc, operaciones_h)
+
+
+    Almacena_GE = []
+    Almacena_LMC = []
+    Almacena_date = []
+
+    for i in range(0,len(todas_las_fechas)-1): 
+        
+        fecha_1 = todas_las_fechas[i]
+        fecha_2 = todas_las_fechas[i+1]
+        
+        parte1 = operaciones_h[operaciones_h["FechaCum"] == fecha_1]
+        parte2 = operaciones_h[operaciones_h["FechaCum"] == fecha_2]
+        
+        operaciones  = pd.concat([parte1, parte2], ignore_index = True)
+                
+        precios = precios_h[precios_h["Fecha"] == fecha_2]
+        precios = pd.concat([precios], ignore_index = True)
+        
+        precios = precios.drop(['Fecha'], axis = 1)
+        
+        indexs = ["UltimoPrecio"]
+        
+        precios["Nemotecnico"] = indexs
+        precios.set_index("Nemotecnico", inplace = True)
+        
+        precios = precios.T
+        temp = []
+        for nemo in precios.index:
+            
+            base = Fluct.index.get_loc(nemo)
+            temp.append(Fluct.iloc[base,0])
+
+
+        precios["Flt"] = temp
+        precios["Alza"] = round(precios["UltimoPrecio"] * (1 + precios["Flt"]*0.75),0)
+        precios["Baja"] = round(precios["UltimoPrecio"] * (1 - precios["Flt"]*0.75),0)
+        
+        neutral = Garantia(operaciones, precios)
+        bullish = Garantia(operaciones, precios)
+        bearish = Garantia(operaciones, precios)
+
+        escenario_neutral = neutral.escenario(0, fecha_2, Grup_Comp, VMDacc, Fluct)
+        ge_n = neutral.calculo(escenario_neutral)
+
+        escenario_alza = bullish.escenario(2, fecha_2, Grup_Comp, VMDacc, Fluct)
+        ge_a = bullish.calculo(escenario_alza)
+
+        escenario_baja = bearish.escenario(3, fecha_2, Grup_Comp, VMDacc, Fluct)
+        ge_b = bearish.calculo(escenario_baja)
+
+        Almacena_date.append(fecha_2)
+        Almacena_GE.append(ge_n)
+        Almacena_LMC.append(max(ge_a, ge_b))
+
+    return Almacena_date, Almacena_GE, Almacena_LMC
+
+if __name__ == '__main__':
+
+    Fluct = pd.read_excel("Fluct.xlsx")
+    Deltas = pd.read_excel("Deltas.xlsx")
+    Grup_Comp = pd.read_excel("VMD.xlsx").loc[:,['Especie','Grupo']]
+    VMDacc = pd.read_excel("VMD.xlsx").loc[:,['Especie','VMD']]
+    operaciones_h = pd.read_excel("OperacionesSimula.xlsx")
+    precios_h = pd.read_excel("Historico Acciones.xlsx")
+
+
+    dates, exigencia, stress = main(Fluct, Deltas, Grup_Comp, VMDacc, operaciones_h, precios_h)
     
-    parte1 = Escenario_Ac[Escenario_Ac["FechaCum"] == fecha_1]
-    parte2 = Escenario_Ac[Escenario_Ac["FechaCum"] == fecha_2]
-    
-    Escenario_Alza = pd.concat([parte1, parte2], ignore_index = True)
-    Escenario_Baja = pd.concat([parte1, parte2], ignore_index = True)
-    Escenario_Actual = pd.concat([parte1, parte2], ignore_index = True)
-    
-    todos = pd.read_excel("Historico Acciones.xlsx")
-    todas_las_fechas = list(set(todos["Fecha"]))
-    todas_las_fechas = sorted(todas_las_fechas)
-    #todos.set_index("Fecha", inplace = True)
-    
-    precios_t = todos[todos["Fecha"] == fecha_2]
-    precios_t = pd.concat([precios_t], ignore_index = True)
-    
-    precios_t = precios_t.drop(['Fecha'], axis = 1)
-    
-    indexs = ["UltimoPrecio"]
-    
-    precios_t["Nemotecnico"] = indexs
-    precios_t.set_index("Nemotecnico", inplace = True)
-    
-    precios = precios_t.T
-    
-    (v1, v2, v3) = garantia_CRCC(Fluct, Deltas, Grup_Comp, VMDacc, Escenario_Actual, Escenario_Alza, Escenario_Baja, precios)
-    
-    Almacena_GE.append(v1)
-    Almacena_LMC.append(v2)
-    Almacena_date.append(fecha_2)
+
         
     
 
